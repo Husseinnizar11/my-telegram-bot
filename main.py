@@ -100,7 +100,7 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
     await context.bot.send_photo(
         chat_id=update.effective_chat.id,
         photo=context.user_data['photo'],
-        caption=f"إليك وصف الصورة المرفقة:\n\n{context.user_data['text']}",
+        caption=f" الوصف:\n\n{context.user_data['text']}",
         reply_markup=context.user_data['buttons_markup']
     )
     
