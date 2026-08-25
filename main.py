@@ -1,78 +1,121 @@
 import logging
-from telegram import InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, InlineQueryHandler, CommandHandler
-
-# التوكن الخاص بك
-TOKEN = "8838346361:AAFE5CVv-dQ-rl4pl73Zy_IM2FWYKM5h1yg"
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, 
+    ContextTypes, ConversationHandler, filters
 )
 
-async def start(update, context):
+TOKEN = '8838346361:AAFE5CVv-dq-r14p173Zy_IM2FWYKMShlyg'
+
+TEXT, BUTTONS, CONFIRM = range(3)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_keyboard = [['✨ إنشاء منشور']]
+    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "أهلاً بك! 👋\n\n"
-        "هذا البوت مخصص لنشر المنشورات والأزرار التفاعلية بحقوقك الخاصة.\n"
-        "لاستخدامه، قم بكتابة معرف البوت في أي محادثة متبوعاً بالنص والأزرار."
+        "القائمة الرئيسية:\nاختر ما تريد من الأزرار أدناه:",
+        reply_markup=markup
     )
 
-async def inline_query(update, context):
-    query = update.inline_query.query.strip()
-    if not query:
-        return
+async def new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "أرسل الآن نص المنشور الذي تريد نشره:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return TEXT
 
-    # تقسيم النص عن الأزرار عند استخدام الرمز |
-    parts = [p.strip() for p in query.split('|')]
-    text_content = parts[0]
-    button_parts = parts[1:]
+async def get_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['post_text'] = update.message.text
+    await update.message.reply_text(
+        "ممتاز! الآن أرسل الأزرار بهذا الشكل:\n"
+        "اسم الزر - الرابط\n\n"
+        "مثال:\n"
+        "رابط الموقع - https://google.com\n"
+        "قناتنا - https://t.me"
+    )
+    return BUTTONS
 
-    buttons = []
-    row = []
+async def get_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text
+    inline_keyboard = []
+    
+    lines = raw_text.split('\n')
+    for line in lines:
+        if '-' in line:
+            parts = line.split('-', 1)
+            btn_text = parts[0].strip()
+            btn_url = parts[1].strip()
+            if btn_url.startswith('http://') or btn_url.startswith('https://'):
+                inline_keyboard.append([InlineKeyboardButton(text=btn_text, url=btn_url)])
 
-    for btn_def in button_parts:
-        sub_parts = [s.strip() for s in btn_def.split('-')]
-        if len(sub_parts) >= 2:
-            btn_name = sub_parts[0]
-            btn_url = sub_parts[1]
-            if not btn_url.startswith('http'):
-                btn_url = 'https://' + btn_url
+    if not inline_keyboard:
+        await update.message.reply_text("الرجاء إرسال الأزرار بالصيغة الصحيحة (اسم الزر - الرابط):")
+        return BUTTONS
 
-            row.append(InlineKeyboardButton(text=btn_name, url=btn_url))
-            if len(row) == 2:
-                buttons.append(row)
-                row = []
+    context.user_data['keyboard'] = InlineKeyboardMarkup(inline_keyboard)
+    
+    await update.message.reply_text("معاينة المنشور قبل الإرسال:")
+    await update.message.reply_text(
+        text=context.user_data['post_text'],
+        reply_markup=context.user_data['keyboard']
+    )
 
-    if row:
-        buttons.append(row)
+    confirm_keyboard = [['أرسل الآن إلى القناة', 'إلغاء']]
+    await update.message.reply_text(
+        "هل تريد إرسال هذا المنشور لقناتك؟",
+        reply_markup=ReplyKeyboardMarkup(confirm_keyboard, resize_keyboard=True, one_time_keyboard=True)
+    )
+    return CONFIRM
 
-    if not buttons:
-        buttons = [[InlineKeyboardButton("🔗 رابط مخصص", url="https://t.me")]]
+async def send_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_choice = update.message.text
 
-    keyboard = InlineKeyboardMarkup(buttons)
-
-    results = [
-        InlineQueryResultArticle(
-            id="1",
-            title="نشر المنشور بحقوقك",
-            description=text_content[:50],
-            input_message_content=InputTextMessageContent(
-                text_content
-            ),
-            reply_markup=keyboard
+    if user_choice == 'أرسل الآن إلى القناة':
+        await update.message.reply_text(
+            "أرسل الآن معرف قناتك (مثال: `@my_channel`) أو قم بتوجيه أي رسالة من القناة إلى هنا:",
+            reply_markup=ReplyKeyboardRemove()
         )
-    ]
+        return CONFIRM
 
-    await update.inline_query.answer(results, cache_time=1)
+    if user_choice.startswith('@') or user_choice.startswith('-100'):
+        try:
+            channel_id = user_choice.strip()
+            await context.bot.send_message(
+                chat_id=channel_id,
+                text=context.user_data['post_text'],
+                reply_markup=context.user_data['keyboard']
+            )
+            await update.message.reply_text("تم نشر المنشور في القناة بنجاح! 🎉")
+        except Exception as e:
+            await update.message.reply_text(f"حدث خطأ أثناء النشر: {e}\nتأكد أن البوت مشرف في القناة.")
+        
+        return await cancel(update, context)
 
-def main():
-    app = Application.builder().token(TOKEN).build()
+    if user_choice == 'إلغاء':
+        return await cancel(update, context)
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(InlineQueryHandler(inline_query))
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    reply_keyboard = [['✨ إنشاء منشور']]
+    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+    await update.message.reply_text("تمت العودة للقائمة الرئيسية.", reply_markup=markup)
+    return ConversationHandler.END
 
-    print("البوت يعمل الآن...")
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex('^✨ إنشاء منشور$'), new_post)],
+        states={
+            TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_text)],
+            BUTTONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_buttons)],
+            CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_post)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel), MessageHandler(filters.Regex('^إلغاء$'), cancel)]
+    )
+
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(conv_handler)
+    
+    print("البوت يعمل بنظام الأزرار التفتاعلية الآن...")
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
