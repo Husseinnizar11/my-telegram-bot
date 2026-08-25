@@ -5,7 +5,7 @@ from telegram.ext import (
     ContextTypes, ConversationHandler, filters
 )
 
-TOKEN = '8838346361:AAFE5CVv-dq-r14p173Zy_IM2FWYKMShlyg'
+TOKEN = '8838346361:AAFE5CVv-dQ-rl4pl73Zy_IM2FWYKM5h1yg'
 
 TEXT, BUTTONS, CONFIRM = range(3)
 
