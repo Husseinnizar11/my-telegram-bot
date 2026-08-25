@@ -2,7 +2,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
-    ContextTypes, ConversationHandler, filters
+    CallbackQueryHandler, ContextTypes, ConversationHandler, filters
 )
 
 TOKEN = '8838346361:AAHZJCx5afaOERHjLeEugRbdGhB57PJcWv4'
@@ -10,19 +10,12 @@ TOKEN = '8838346361:AAHZJCx5afaOERHjLeEugRbdGhB57PJcWv4'
 # States
 START_BUILD, ADD_TEXT, ADD_BUTTONS, SEND_CHANNEL = range(4)
 
-def get_main_menu():
-    keyboard = [
-        [InlineKeyboardButton("📝 إضافة نص", callback_data="add_text"), InlineKeyboardButton("🔗 إضافة أزرار", callback_data="add_buttons")],
-        [InlineKeyboardButton("✅ تم (Done)", callback_data="done"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     reply_keyboard = [['✨ إنشاء منشور جديد']]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "أهلاً بك! اضغط على (✨ إنشاء منشور جديد) أو أرسل لي (صورة/فيديو/نص) مباشرة للبدء:",
+        "أهلاً بك! أرسل لي (صورة أو نصاً) مباشرة للبدء بإنشاء المنشور:",
         reply_markup=markup
     )
 
@@ -47,7 +40,6 @@ async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for btn in buttons:
         inline_keyboard.append([InlineKeyboardButton(text=btn['text'], url=btn['url'])])
     
-    # أزرار التحكم الخاصة بالبوت (مثل PostBot)
     control_buttons = [
         [InlineKeyboardButton("📝 إضافة/تعديل نص", callback_data="add_text"), InlineKeyboardButton("➕ إضافة أزرار", callback_data="add_buttons")],
         [InlineKeyboardButton("🚀 نشر في القناة (Done)", callback_data="done"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]
@@ -55,9 +47,11 @@ async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     full_keyboard = InlineKeyboardMarkup(inline_keyboard + control_buttons)
 
+    chat_id = update.effective_chat.id
+
     if 'photo' in context.user_data:
         await context.bot.send_photo(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             photo=context.user_data['photo'],
             caption=f"**معاينة المنشور:**\n\n{caption}",
             reply_markup=full_keyboard,
@@ -65,7 +59,7 @@ async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             text=f"**معاينة المنشور:**\n\n{caption}",
             reply_markup=full_keyboard,
             parse_mode='Markdown'
@@ -83,8 +77,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "أرسل الأزرار بهذا الشكل:\n"
             "اسم الزر - الرابط\n\n"
             "مثال:\n"
-            "موقعنا - https://google.com\n"
-            "قناتنا - https://t.me"
+            "موقعنا - https://google.com"
         )
         return ADD_BUTTONS
     elif query.data == "done":
@@ -140,7 +133,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await update.message.reply_text("تم نشر المنشور في القناة بنجاح! 🎉")
     except Exception as e:
-        await update.message.reply_text(f"حدث خطأ أثناء النشر: {e}\nتأكد أن البوت مشرف في القناة وبصلاحية إرسال الرسائل.")
+        await update.message.reply_text(f"حدث خطأ أثناء النشر: {e}\nتأكد أن البوت مشرف في القناة.")
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -150,7 +143,7 @@ if __name__ == '__main__':
 
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.PHOTO | filters.TEXT & ~filters.COMMAND, handle_media_or_start)
+            MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_media_or_start)
         ],
         states={
             START_BUILD: [CallbackQueryHandler(button_click)],
