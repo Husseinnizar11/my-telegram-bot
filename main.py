@@ -23,7 +23,7 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_PHOTO
         
     context.user_data['photo'] = update.message.photo[-1].file_id
-    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة (النص).")
+    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة (يمكنك إرسال أي نص، اقتباس، أو أكواد).")
     return WAITING_TEXT
 
 # 3. استلام النص وتحديد ترتيب الأزرار
@@ -47,13 +47,10 @@ async def set_layout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['layout'] = query.data
     
     msg = (
-        "الخطوة الرابعة: أرسل الآن الأزرار والروابط التي تريدها بنفسك.\n\n"
-        "يمكنك إرسال زر واحد فقط أو عدة أزرار (كل زر في سطر منفصل) بهذا الشكل:\n"
+        "الخطوة الرابعة: أرسل الآن الأزرار والروابط التي تريدها.\n\n"
+        "أرسل كل زر في سطر منفصل بهذا الشكل:\n"
         "اسم الزر - الرابط\n\n"
-        "مثال لزر واحد:\n"
-        "تحميل الصورة - https://example.com\n\n"
-        "مثال لزرين:\n"
-        "معاينة الصورة - https://example.com\n"
+        "مثال:\n"
         "تحميل الصورة - https://example.com"
     )
     
@@ -78,15 +75,13 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("لم يتم التعرف على الأزرار! يرجى إرسالها بالصيغة الصحيحة:\nاسم الزر - الرابط")
         return WAITING_BUTTONS_DATA
 
-    # بناء شكل الأزرار بناءً على الترتيب المختار والعدد
+    # بناء شكل الأزرار بناءً على الترتيب المختار
     final_keyboard = []
     if layout == "layout_horizontal" and len(parsed_buttons) > 1:
-        # وضع أول زرين بجانب بعضهما
         final_keyboard.append(parsed_buttons[:2])
         for btn in parsed_buttons[2:]:
             final_keyboard.append([btn])
     else:
-        # وضع الأزرار بشكل عمودي (زر فوق زر)
         for btn in parsed_buttons:
             final_keyboard.append([btn])
 
@@ -97,14 +92,15 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         [InlineKeyboardButton("📲 مشاركة المنشور مع صديق", switch_inline_query=context.user_data['text'][:20])]
     ])
     
+    # تم إزالة parse_mode لتقبل الصورة جميع أنواع النصوص والأكواد والاقتباسات بدون مشاكل
     await context.bot.send_photo(
         chat_id=update.effective_chat.id,
         photo=context.user_data['photo'],
-        caption=f" الوصف:\n\n{context.user_data['text']}",
+        caption=context.user_data['text'],
         reply_markup=context.user_data['buttons_markup']
     )
     
-    await update.message.reply_text("تم إنشاء المنشور بنجاح حسب اختيارك! اضغط على الزر أدناه لمشاركته في أي محادثة:", reply_markup=share_button)
+    await update.message.reply_text("تم إنشاء المنشور بنجاح! اضغط على الزر أدناه لمشاركته في أي محادثة:", reply_markup=share_button)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -126,5 +122,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
-    print("البوت يعمل الآن بالتحديث جديد...")
+    print("البوت يعمل الآن ويدعم جميع النصوص والأكواد والاقتباسات...")
     app.run_polling()
