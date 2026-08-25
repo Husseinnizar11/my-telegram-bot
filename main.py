@@ -1,11 +1,15 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import uuid
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultPhoto
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
-    CallbackQueryHandler, ContextTypes, ConversationHandler, filters
+    CallbackQueryHandler, InlineQueryHandler, ContextTypes, ConversationHandler, filters
 )
 
 TOKEN = '8838346361:AAHZJCx5afaOERHjLeEugRbdGhB57PJcWv4'
+
+# ذاكرة لتخزين المنشورات الجاهزة للمشاركة
+posts_db = {}
 
 # States
 WAITING_PHOTO, WAITING_TEXT, WAITING_LAYOUT, WAITING_BUTTONS_DATA = range(4)
@@ -23,12 +27,11 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_PHOTO
         
     context.user_data['photo'] = update.message.photo[-1].file_id
-    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة (يمكنك تنسيق النص بنفسك واختيار اقتباس من خيارات تليجرام).")
+    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة.")
     return WAITING_TEXT
 
 # 3. استلام النص وتنسيق المستخدم
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # حفظ النص والتنسيقات (Entities) التي حددها المستخدم بنفسه
     context.user_data['text'] = update.message.text
     context.user_data['entities'] = update.message.entities or update.message.caption_entities
     
@@ -41,7 +44,7 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("الخطوة الثالثة: اختر شكل ترتيب الأزرار (أفقي أم عمودي):", reply_markup=reply_markup)
     return WAITING_LAYOUT
 
-# 4. طلب تفاصيل الأزرار والروابط من المستخدم
+# 4. طلب تفاصيل الأزرار
 async def set_layout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -51,15 +54,13 @@ async def set_layout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "الخطوة الرابعة: أرسل الآن الأزرار والروابط التي تريدها.\n\n"
         "أرسل كل زر في سطر منفصل بهذا الشكل:\n"
-        "اسم الزر - الرابط\n\n"
-        "مثال:\n"
-        "تحميل الصورة - https://example.com"
+        "اسم الزر - الرابط"
     )
     
     await query.message.reply_text(msg)
     return WAITING_BUTTONS_DATA
 
-# 5. معالجة الأزرار وإرسال المنشور بتنسيق المستخدم الأصلي
+# 5. معالجة الأزرار وتجهيز المنشور للمشاركة المباشرة
 async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_text = update.message.text
     layout = context.user_data.get('layout', 'layout_vertical')
@@ -77,7 +78,6 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("لم يتم التعرف على الأزرار! يرجى إرسالها بالصيغة الصحيحة:\nاسم الزر - الرابط")
         return WAITING_BUTTONS_DATA
 
-    # بناء شكل الأزرار
     final_keyboard = []
     if layout == "layout_horizontal" and len(parsed_buttons) > 1:
         final_keyboard.append(parsed_buttons[:2])
@@ -87,24 +87,52 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         for btn in parsed_buttons:
             final_keyboard.append([btn])
 
-    context.user_data['buttons_markup'] = InlineKeyboardMarkup(final_keyboard)
+    buttons_markup = InlineKeyboardMarkup(final_keyboard)
     
-    # زر مشاركة المنشور
-    share_button = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📲 مشاركة المنشور مع صديق", switch_inline_query=context.user_data['text'][:20])]
-    ])
+    # حفظ المنشور برقم تعريفي فريد للمشاركة المباشرة
+    post_id = str(uuid.uuid4())[:8]
+    posts_db[post_id] = {
+        'photo': context.user_data['photo'],
+        'caption': context.user_data['text'],
+        'entities': context.user_data['entities'],
+        'markup': buttons_markup
+    }
     
-    # إرسال الصورة بنصها المنسق الأصلي الذي اختاره المستخدم
+    # إرسال معاينة داخل المحادثة
     await context.bot.send_photo(
         chat_id=update.effective_chat.id,
         photo=context.user_data['photo'],
         caption=context.user_data['text'],
         caption_entities=context.user_data['entities'],
-        reply_markup=context.user_data['buttons_markup']
+        reply_markup=buttons_markup
     )
     
-    await update.message.reply_text("تم إنشاء المنشور بنجاح! اضغط على الزر أدناه لمشاركته في أي محادثة:", reply_markup=share_button)
+    # زر المشاركة المباشرة
+    bot_info = await context.bot.get_me()
+    share_button = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📲 إرسال المنشور مباشرة", switch_inline_query=post_id)]
+    ])
+    
+    await update.message.reply_text("تم إنشاء المنشور بنجاح! اضغط على الزر أدناه لإرساله مباشرة في أي محادثة أو قناة:", reply_markup=share_button)
     return ConversationHandler.END
+
+# معالجة مشاركة المنشور عبر الـ Inline Mode
+async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query.strip()
+    
+    if query in posts_db:
+        post = posts_db[query]
+        results = [
+            InlineQueryResultPhoto(
+                id=query,
+                photo_file_id=post['photo'],
+                title="إرسال المنشور",
+                caption=post['caption'],
+                caption_entities=post['entities'],
+                reply_markup=post['markup']
+            )
+        ]
+        await update.inline_query.answer(results, cache_time=1)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("تم إلغاء العملية.")
@@ -125,5 +153,7 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
-    print("البوت يعمل وينقل تنسيق النص واقتباسات المستخدم بذكاء...")
+    app.add_handler(InlineQueryHandler(inline_query_handler))
+    
+    print("البوت يعمل ويدعم المشاركة المباشرة بكفاءة...")
     app.run_polling()
