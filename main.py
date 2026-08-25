@@ -23,12 +23,14 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_PHOTO
         
     context.user_data['photo'] = update.message.photo[-1].file_id
-    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة (يمكنك إرسال أي نص، اقتباس، أو أكواد).")
+    await update.message.reply_text("تمت إضافة الصورة بنجاح! الخطوة الثانية: أرسل الآن وصف الصورة (يمكنك تنسيق النص بنفسك واختيار اقتباس من خيارات تليجرام).")
     return WAITING_TEXT
 
-# 3. استلام النص وتحديد ترتيب الأزرار
+# 3. استلام النص وتنسيق المستخدم
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # حفظ النص والتنسيقات (Entities) التي حددها المستخدم بنفسه
     context.user_data['text'] = update.message.text
+    context.user_data['entities'] = update.message.entities or update.message.caption_entities
     
     keyboard = [
         [InlineKeyboardButton("أفقية (بجانب بعض)", callback_data="layout_horizontal")],
@@ -57,7 +59,7 @@ async def set_layout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(msg)
     return WAITING_BUTTONS_DATA
 
-# 5. معالجة الأزرار المدخلة وإعادة المعاينة
+# 5. معالجة الأزرار وإرسال المنشور بتنسيق المستخدم الأصلي
 async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_text = update.message.text
     layout = context.user_data.get('layout', 'layout_vertical')
@@ -75,7 +77,7 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("لم يتم التعرف على الأزرار! يرجى إرسالها بالصيغة الصحيحة:\nاسم الزر - الرابط")
         return WAITING_BUTTONS_DATA
 
-    # بناء شكل الأزرار بناءً على الترتيب المختار
+    # بناء شكل الأزرار
     final_keyboard = []
     if layout == "layout_horizontal" and len(parsed_buttons) > 1:
         final_keyboard.append(parsed_buttons[:2])
@@ -92,11 +94,12 @@ async def process_buttons_and_show(update: Update, context: ContextTypes.DEFAULT
         [InlineKeyboardButton("📲 مشاركة المنشور مع صديق", switch_inline_query=context.user_data['text'][:20])]
     ])
     
-    # تم إزالة parse_mode لتقبل الصورة جميع أنواع النصوص والأكواد والاقتباسات بدون مشاكل
+    # إرسال الصورة بنصها المنسق الأصلي الذي اختاره المستخدم
     await context.bot.send_photo(
         chat_id=update.effective_chat.id,
         photo=context.user_data['photo'],
         caption=context.user_data['text'],
+        caption_entities=context.user_data['entities'],
         reply_markup=context.user_data['buttons_markup']
     )
     
@@ -122,5 +125,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
-    print("البوت يعمل الآن ويدعم جميع النصوص والأكواد والاقتباسات...")
+    print("البوت يعمل وينقل تنسيق النص واقتباسات المستخدم بذكاء...")
     app.run_polling()
