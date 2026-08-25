@@ -5,7 +5,7 @@ from telegram.ext import (
     ContextTypes, ConversationHandler, filters
 )
 
-TOKEN = '8838346361:AAFE5CVv-dQ-rl4pl73Zy_IM2FWYKM5h1yg'
+TOKEN = '8838346361:AAFE5CVv-dq-r14p173Zy_IM2FWYKMShlyg'
 
 TEXT, BUTTONS, CONFIRM = range(3)
 
@@ -13,13 +13,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['✨ إنشاء منشور']]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "القائمة الرئيسية:\nاختر ما تريد من الأزرار أدناه:",
+        "أهلاً بك! اختر من القائمة أدناه:",
         reply_markup=markup
     )
 
 async def new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "أرسل الآن نص المنشور الذي تريد نشره:",
+        "أرسل الآن نص المنشور:",
         reply_markup=ReplyKeyboardRemove()
     )
     return TEXT
@@ -27,11 +27,10 @@ async def new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['post_text'] = update.message.text
     await update.message.reply_text(
-        "ممتاز! الآن أرسل الأزرار بهذا الشكل:\n"
+        "الآن أرسل الأزرار بهذا الشكل:\n"
         "اسم الزر - الرابط\n\n"
         "مثال:\n"
-        "رابط الموقع - https://google.com\n"
-        "قناتنا - https://t.me"
+        "رابط الموقع - https://google.com"
     )
     return BUTTONS
 
@@ -54,9 +53,8 @@ async def get_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['keyboard'] = InlineKeyboardMarkup(inline_keyboard)
     
-    await update.message.reply_text("معاينة المنشور قبل الإرسال:")
     await update.message.reply_text(
-        text=context.user_data['post_text'],
+        text=f"معاينة المنشور:\n\n{context.user_data['post_text']}",
         reply_markup=context.user_data['keyboard']
     )
 
@@ -72,7 +70,7 @@ async def send_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_choice == 'أرسل الآن إلى القناة':
         await update.message.reply_text(
-            "أرسل الآن معرف قناتك (مثال: `@my_channel`) أو قم بتوجيه أي رسالة من القناة إلى هنا:",
+            "أرسل معرف قناتك الآن (مثال: `@my_channel`):",
             reply_markup=ReplyKeyboardRemove()
         )
         return CONFIRM
@@ -117,5 +115,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('start', start))
     app.add_handler(conv_handler)
     
-    print("البوت يعمل بنظام الأزرار التفتاعلية الآن...")
+    print("البوت جاهز...")
     app.run_polling()
